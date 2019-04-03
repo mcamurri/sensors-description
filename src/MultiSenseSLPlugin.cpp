@@ -17,10 +17,14 @@
 
 #include <gazebo/physics/PhysicsTypes.hh>
 #include <gazebo/rendering/Camera.hh>
+#include <ignition/math/Vector3.hh>
+#include <ignition/math/Quaternion.hh>
 #include <sensor_msgs/Imu.h>
+
 
 #include "sensors_description/MultiSenseSLPlugin.h"
 
+using namespace ignition;
 
 namespace gazebo
 {
@@ -82,7 +86,6 @@ MultiSenseSL::MultiSenseSL()
 ////////////////////////////////////////////////////////////////////////////////
 MultiSenseSL::~MultiSenseSL()
 {
-  event::Events::DisconnectWorldUpdateBegin(this->updateConnection);
   delete this->pmq;
   this->rosnode_->shutdown();
   this->queue_.clear();
@@ -102,7 +105,7 @@ void MultiSenseSL::Load(physics::ModelPtr _parent, sdf::ElementPtr _sdf)
   std::string prefix = "multisense/";
   ROS_DEBUG("Loading Multisense ROS node.");
 
-  this->lastTime = this->world->GetSimTime();
+  this->lastTime = this->world->SimTime();
 
   // Get imu link
   this->imuLink = this->robotModel->GetLink(this->imuLinkName);
@@ -139,8 +142,8 @@ void MultiSenseSL::Load(physics::ModelPtr _parent, sdf::ElementPtr _sdf)
 
   if (this->camera_joint) {
       // Setting limits to 0 so the joint doesn't move
-      this->camera_joint->SetLowStop(0,math::Angle::Zero);
-      this->camera_joint->SetHighStop(0,math::Angle::Zero);
+      this->camera_joint->SetLowerLimit(0, 0);
+      this->camera_joint->SetUpperLimit(0, 0);
   } else {
       gzwarn << camera_joint_name << " not found! Things may not work for ";
       gzwarn << "the simulated Hokuyo. Have you set the joint in ";
@@ -151,8 +154,8 @@ void MultiSenseSL::Load(physics::ModelPtr _parent, sdf::ElementPtr _sdf)
   this->spindle_joint = this->robotModel->GetJoint(spindle_joint_name);
   if(this->spindle_joint){
       // Setting limits to 0 so the joint doesn't move
-      this->spindle_joint->SetLowStop(0,math::Angle::Zero);
-      this->spindle_joint->SetHighStop(0,math::Angle::Zero);
+      this->spindle_joint->SetLowerLimit(0, 0);
+      this->spindle_joint->SetUpperLimit(0, 0);
   } else {
       gzwarn << spindle_joint_name << " not found! Things may not work for ";
       gzwarn << "the simulated Hokuyo. Have you set the joint in ";
@@ -314,7 +317,7 @@ void MultiSenseSL::LoadThread()
     this->rosnode_->advertiseService(set_spindle_state_aso);
   */
 
-  this->lastUpdateTime = this->world->GetSimTime().Double();
+  this->lastUpdateTime = this->world->SimTime().Double();
   this->updateRate = 1.0;
 
   // ros callback queue for processing subscription
@@ -328,7 +331,7 @@ void MultiSenseSL::LoadThread()
 ////////////////////////////////////////////////////////////////////////////////
 void MultiSenseSL::UpdateStates()
 {
-  common::Time curTime = this->world->GetSimTime();
+  common::Time curTime = this->world->SimTime();
 
   // get imu data from imu link
   if (this->imuSensor)
@@ -339,28 +342,28 @@ void MultiSenseSL::UpdateStates()
 
     // compute angular rates
     {
-      math::Vector3 wLocal = this->imuSensor->AngularVelocity();
-      imuMsg.angular_velocity.x = wLocal.x;
-      imuMsg.angular_velocity.y = wLocal.y;
-      imuMsg.angular_velocity.z = wLocal.z;
+      math::Vector3d wLocal = this->imuSensor->AngularVelocity();
+      imuMsg.angular_velocity.x = wLocal.X();
+      imuMsg.angular_velocity.y = wLocal.Y();
+      imuMsg.angular_velocity.z = wLocal.Z();
     }
 
     // compute acceleration
     {
-      math::Vector3 accel = this->imuSensor->LinearAcceleration();
-      imuMsg.linear_acceleration.x = accel.x;
-      imuMsg.linear_acceleration.y = accel.y;
-      imuMsg.linear_acceleration.z = accel.z;
+      math::Vector3d accel = this->imuSensor->LinearAcceleration();
+      imuMsg.linear_acceleration.x = accel.X();
+      imuMsg.linear_acceleration.y = accel.Y();
+      imuMsg.linear_acceleration.z = accel.Z();
     }
 
     // compute orientation
     {
-      math::Quaternion imuRot =
+      math::Quaterniond imuRot =
         this->imuSensor->Orientation();
-      imuMsg.orientation.x = imuRot.x;
-      imuMsg.orientation.y = imuRot.y;
-      imuMsg.orientation.z = imuRot.z;
-      imuMsg.orientation.w = imuRot.w;
+      imuMsg.orientation.x = imuRot.X();
+      imuMsg.orientation.y = imuRot.Y();
+      imuMsg.orientation.z = imuRot.Z();
+      imuMsg.orientation.w = imuRot.W();
     }
 
 
@@ -383,7 +386,7 @@ void MultiSenseSL::UpdateStates()
   {
     this->jointStates.header.stamp = ros::Time(curTime.sec, curTime.nsec);
     this->jointStates.name[0] = this->motor_joint->GetName();
-    math::Angle angle = this->motor_joint->GetAngle(0);
+    math::Angle angle = this->motor_joint->Position();
     angle.Normalize();
     this->jointStates.position[0] = angle.Radian();
     this->jointStates.velocity[0] = this->motor_joint->GetVelocity(0);
